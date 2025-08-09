@@ -1,0 +1,33 @@
+{
+  "name": "resonant-semantic-embedding",
+  "version": "1.0.0",
+  "description": "Resonant Semantic Embedding: Frequency-Domain Analysis of Semantic Content with Manifold Learning",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/example.ts",
+    "example": "npm run build && node dist/example.js",
+    "test": "jest",
+    "paper:build": "pandoc papers/rse-technical-paper.md -o papers/rse-technical-paper.pdf --pdf-engine=xelatex",
+    "paper:html": "pandoc papers/rse-technical-paper.md -o papers/rse-technical-paper.html --mathjax",
+    "clean": "rm -rf dist"
+  },
+  "keywords": ["semantic-embedding", "nlp", "signal-processing", "fourier-analysis", "manifold-learning", "geodesic-distance", "ai"],
+  "author": "AI Workspace Research",
+  "license": "MIT",
+  "dependencies": {
+    "ml-matrix": "^6.10.7",
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.3.0",
+    "jest": "^29.0.0",
+    "@types/jest": "^29.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "resonant-semantic-embedding": {
+      "command": "node",
+      "args": [
+        "/home/ty/Repositories/ai_workspace/resonant-semantic-embedding/dist/server.js"
+      ]
+    }
+  }
+}
