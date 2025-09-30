@@ -3,7 +3,11 @@
  * Exposes RSE functionality through Model Context Protocol
  * 
  * ASYNC REFACTOR: Removed mock embeddings, using real embedding backends
+ * ENV LOADING FIX: Import env.ts FIRST to load .env before any config initialization
  */
+
+// CRITICAL: This import MUST be first to load .env before config.ts initializes
+import './env.js';
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
