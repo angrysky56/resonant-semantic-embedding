@@ -1,6 +1,8 @@
 /**
  * MCP Server for Resonant Semantic Embedding
  * Exposes RSE functionality through Model Context Protocol
+ * 
+ * ASYNC REFACTOR: Removed mock embeddings, using real embedding backends
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -10,89 +12,28 @@ import {
   ListToolsRequestSchema,
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
-  ListPromptsRequestSchema,
-  GetPromptRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { ResonantSemanticEmbedding, SemanticFourierTransform } from './index.js';
+import { ResonantSemanticEmbedding } from './index.js';
+import { DEFAULT_RSE_CONFIG, EmbeddingBackend, RSEConfig } from './config.js';
 
 /**
- * Real embedding function using local sentence-transformers service
- * Connects to Python FastAPI embedding service on localhost:8001
+ * Initialize embedding backend and RSE engine
  */
-async function generateEmbedding(text: string): Promise<Float64Array> {
-  try {
-    const response = await fetch('http://127.0.0.1:8001/embed', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ text }),
-    });
+const config: RSEConfig = DEFAULT_RSE_CONFIG;
+const embeddingBackend = new EmbeddingBackend(config.embeddingBackend);
 
-    if (!response.ok) {
-      throw new Error(`Embedding service error: ${response.status} ${response.statusText}`);
-    }
+// Create async embedding function for RSE
+const embeddingFunction = async (text: string): Promise<Float64Array> => {
+  return embeddingBackend.generateEmbedding(text);
+};
 
-    const data = await response.json();
-    return new Float64Array(data.embedding);
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    log('error', `Embedding generation failed for text: "${text.substring(0, 50)}..."`, { error: errorMessage });
-    throw new Error(`Embedding generation failed: ${errorMessage}`);
-  }
-}
-
-/**
- * Synchronous wrapper for embedding function to maintain compatibility with RSE engine
- * Note: This converts async operation to sync - consider refactoring RSE engine for async in future
- */
-function embeddingFunction(text: string): Float64Array {
-  // For now, we need to handle this synchronously to maintain compatibility
-  // In production, consider refactoring RSE engine to support async operations
-  try {
-    const embedding = new Float64Array(384); // Standard sentence-transformers dimension
-    
-    // Temporary fallback until we implement proper async handling
-    // This will be replaced with proper async integration
-    log('warn', 'Using temporary synchronous embedding wrapper', { text: text.substring(0, 50) });
-    
-    // Generate a deterministic but improved embedding compared to mock
-    const words = text.toLowerCase().split(/\s+/);
-    for (let i = 0; i < words.length && i < 20; i++) {
-      const word = words[i];
-      const wordHash = word.split('').reduce((hash, char) => {
-        return ((hash << 5) - hash + char.charCodeAt(0)) | 0;
-      }, 0);
-      
-      const baseIndex = Math.abs(wordHash % (embedding.length - 10));
-      for (let j = 0; j < 10; j++) {
-        embedding[baseIndex + j] += Math.sin(wordHash + i + j) * 0.1;
-      }
-    }
-    
-    // Normalize
-    const norm = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
-    if (norm > 0) {
-      for (let i = 0; i < embedding.length; i++) {
-        embedding[i] /= norm;
-      }
-    }
-    
-    return embedding;
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    log('error', 'Embedding function failed', { error: errorMessage, text: text.substring(0, 50) });
-    throw new Error(`Embedding function failed: ${errorMessage}`);
-  }
-}
-
-// Initialize RSE engine with real embedding function
+// Initialize RSE engine with REAL embedding function
 const rseEngine = new ResonantSemanticEmbedding(
   embeddingFunction,
-  0.1,  // threshold
-  3,    // window size
-  3,    // manifold dimension
-  true  // use manifold metrics
+  config.threshold,
+  config.windowSize,
+  config.manifoldDimension,
+  config.useManifoldMetrics
 );
 
 // Document cache for analysis
@@ -102,28 +43,27 @@ const documentCache = new Map<string, string>();
 const server = new Server(
   {
     name: "resonant-semantic-embedding",
-    version: "1.0.0",
+    version: "2.0.0",  // Version bump for async refactor
   },
   {
     capabilities: {
       tools: {},
       resources: {},
-      prompts: {},
     },
   }
 );
-
-// Error handling utility
-function handleError(error: unknown, operation: string): string {
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  console.error(`[RSE Server] Error in ${operation}:`, errorMessage);
-  return `Error in ${operation}: ${errorMessage}`;
-}
 
 // Logging utility
 function log(level: 'info' | 'warn' | 'error', message: string, data?: any): void {
   const timestamp = new Date().toISOString();
   console.error(`${timestamp} [RSE Server] [${level}] ${message}`, data ? JSON.stringify(data) : '');
+}
+
+// Error handling utility
+function handleError(error: unknown, operation: string): string {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  log('error', `Error in ${operation}`, { error: errorMessage });
+  return `Error in ${operation}: ${errorMessage}`;
 }
 
 /**
@@ -134,7 +74,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: "analyze_document_rse",
-        description: "Analyze a document using Resonant Semantic Embedding (RSE) to extract frequency-domain semantic features",
+        description: "Analyze a document using Resonant Semantic Embedding (RSE) to extract frequency-domain semantic features with REAL embeddings",
         inputSchema: {
           type: "object",
           properties: {
@@ -153,7 +93,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "compare_documents_rse",
-        description: "Compare semantic similarity between two documents using RSE distance metrics",
+        description: "Compare semantic similarity between two documents using RSE distance metrics with REAL embeddings",
         inputSchema: {
           type: "object",
           properties: {
@@ -176,7 +116,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "semantic_hierarchy_analysis",
-        description: "Analyze the semantic hierarchy of a document by frequency importance",
+        description: "Analyze the semantic hierarchy of a document by frequency importance using REAL embeddings",
         inputSchema: {
           type: "object",
           properties: {
@@ -190,7 +130,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "semantic_complexity_analysis",
-        description: "Analyze semantic complexity using manifold curvature metrics",
+        description: "Analyze semantic complexity using manifold curvature metrics with REAL embeddings",
         inputSchema: {
           type: "object",
           properties: {
@@ -219,6 +159,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ["document_id", "document"]
         }
+      },
+      {
+        name: "embedding_backend_health",
+        description: "Check the health status of the embedding backend (Python service or Ollama)",
+        inputSchema: {
+          type: "object",
+          properties: {},
+          required: []
+        }
       }
     ]
   };
@@ -226,47 +175,61 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 
 /**
  * Handle tool calls
+ * ASYNC REFACTOR: All handlers now properly await async operations
  */
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
   
   try {
-    log('info', `Tool called: ${name}`, args);
+    log('info', `Tool called: ${name}`, { args });
 
     switch (name) {
       case "analyze_document_rse": {
         const { document, use_manifold = true } = args as { document: string; use_manifold?: boolean };
         
         if (use_manifold) {
-          const manifoldRSE = rseEngine.generateManifoldRSE(document);
+          // ASYNC: Now properly awaits
+          const manifoldRSE = await rseEngine.generateManifoldRSE(document);
+          
           return {
             content: [
               {
                 type: "text",
                 text: JSON.stringify({
                   type: "manifold_rse_analysis",
+                  embedding_backend: config.embeddingBackend.type,
                   total_energy: manifoldRSE.totalEnergy,
                   compression_ratio: manifoldRSE.compressionRatio,
                   resonant_components: manifoldRSE.components.length,
                   manifold_dimension: manifoldRSE.manifoldDimension,
                   average_curvature: manifoldRSE.averageCurvature,
+                  semantic_complexity_indicator: manifoldRSE.averageCurvature > 0.5 ? "high" : "moderate",
                   top_frequency_components: manifoldRSE.geodesicComponents.slice(0, 5).map(comp => ({
                     frequency: comp.frequency,
                     amplitude: comp.amplitude,
                     phase_vector_norm: Math.sqrt(comp.phase.reduce((sum, p) => sum + p*p, 0))
-                  }))
+                  })),
+                  interpretation: {
+                    energy: `Total semantic energy: ${manifoldRSE.totalEnergy.toFixed(3)}`,
+                    compression: `Retained ${(manifoldRSE.compressionRatio * 100).toFixed(1)}% of frequency components`,
+                    complexity: `Average manifold curvature: ${manifoldRSE.averageCurvature.toFixed(4)} (higher = more complex semantics)`,
+                    dimensions: `Semantic manifold has ${manifoldRSE.manifoldDimension} intrinsic dimensions`
+                  }
                 }, null, 2)
               }
             ]
           };
         } else {
-          const rse = rseEngine.generateRSE(document);
+          // ASYNC: Now properly awaits
+          const rse = await rseEngine.generateRSE(document);
+          
           return {
             content: [
               {
                 type: "text",
                 text: JSON.stringify({
                   type: "basic_rse_analysis",
+                  embedding_backend: config.embeddingBackend.type,
                   total_energy: rse.totalEnergy,
                   compression_ratio: rse.compressionRatio,
                   resonant_components: rse.components.length,
@@ -275,7 +238,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     frequency: comp.frequency,
                     amplitude: comp.amplitude,
                     phase_vector_norm: Math.sqrt(comp.phase.reduce((sum, p) => sum + p*p, 0))
-                  }))
+                  })),
+                  interpretation: {
+                    energy: `Total semantic energy: ${rse.totalEnergy.toFixed(3)}`,
+                    compression: `Retained ${(rse.compressionRatio * 100).toFixed(1)}% of frequency components`,
+                    components: `${rse.components.length} resonant frequency components identified`
+                  }
                 }, null, 2)
               }
             ]
@@ -290,22 +258,34 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           use_geometric_similarity?: boolean 
         };
         
+        // ASYNC: Now properly awaits
         const similarity = use_geometric_similarity 
-          ? rseEngine.geometricSimilarity(document1, document2)
-          : rseEngine.similarity(document1, document2);
+          ? await rseEngine.geometricSimilarity(document1, document2)
+          : await rseEngine.similarity(document1, document2);
         
         return {
           content: [
             {
               type: "text",
               text: JSON.stringify({
-                type: "similarity_analysis",
+                type: "rse_similarity_comparison",
+                embedding_backend: config.embeddingBackend.type,
+                method: use_geometric_similarity ? "geometric (manifold-based)" : "standard RSE distance",
                 similarity_score: similarity,
-                distance_score: 1 - similarity,
-                method_used: use_geometric_similarity ? "geometric_manifold" : "standard_rse",
-                interpretation: similarity > 0.8 ? "highly_similar" : 
-                              similarity > 0.6 ? "moderately_similar" : 
-                              similarity > 0.4 ? "somewhat_similar" : "dissimilar"
+                distance_score: -Math.log(similarity),
+                interpretation: similarity > 0.8 
+                  ? "Very similar semantic content"
+                  : similarity > 0.6
+                  ? "Moderately similar semantic content"
+                  : similarity > 0.4
+                  ? "Somewhat similar semantic content"
+                  : "Dissimilar semantic content",
+                details: {
+                  score_explanation: "Score of 1.0 = identical, 0.0 = completely different",
+                  method_note: use_geometric_similarity 
+                    ? "Geometric similarity uses manifold geodesic distances for enhanced semantic understanding"
+                    : "Standard similarity uses frequency-domain RSE distance metric"
+                }
               }, null, 2)
             }
           ]
@@ -315,7 +295,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "semantic_hierarchy_analysis": {
         const { document } = args as { document: string };
         
-        const hierarchy = rseEngine.analyzeSemanticHierarchy(document);
+        // ASYNC: Now properly awaits
+        const hierarchy = await rseEngine.analyzeSemanticHierarchy(document);
         
         return {
           content: [
@@ -323,14 +304,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               type: "text",
               text: JSON.stringify({
                 type: "semantic_hierarchy",
+                embedding_backend: config.embeddingBackend.type,
                 total_components: hierarchy.length,
-                hierarchy_levels: hierarchy.map((comp, index) => ({
+                frequency_components: hierarchy.map((comp, index) => ({
                   rank: index + 1,
                   frequency: comp.frequency,
                   amplitude: comp.amplitude,
-                  relative_importance: comp.amplitude / hierarchy[0].amplitude,
+                  importance: index < 3 ? "high" : index < 6 ? "medium" : "low",
                   phase_complexity: Math.sqrt(comp.phase.reduce((sum, p) => sum + p*p, 0))
-                }))
+                })),
+                interpretation: {
+                  top_3: "The top 3 frequency components represent the most semantically important patterns",
+                  amplitude_meaning: "Higher amplitude indicates stronger semantic resonance at that frequency",
+                  phase_meaning: "Phase complexity measures the directional distribution of semantic content"
+                }
               }, null, 2)
             }
           ]
@@ -340,7 +327,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "semantic_complexity_analysis": {
         const { document } = args as { document: string };
         
-        const complexity = rseEngine.analyzeSemanticComplexity(document);
+        // ASYNC: Now properly awaits
+        const complexity = await rseEngine.analyzeSemanticComplexity(document);
         
         return {
           content: [
@@ -348,15 +336,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               type: "text",
               text: JSON.stringify({
                 type: "semantic_complexity",
+                embedding_backend: config.embeddingBackend.type,
                 average_curvature: complexity.averageCurvature,
                 max_curvature: complexity.maxCurvature,
                 curvature_variance: complexity.curvatureVariance,
-                complexity_interpretation: complexity.averageCurvature > 0.5 ? "high_complexity" :
-                                         complexity.averageCurvature > 0.2 ? "moderate_complexity" : "low_complexity",
-                most_complex_regions: complexity.complexityRegions.slice(0, 3).map(region => ({
+                complexity_level: complexity.averageCurvature > 0.5 
+                  ? "high" 
+                  : complexity.averageCurvature > 0.2 
+                  ? "moderate" 
+                  : "low",
+                most_complex_regions: complexity.complexityRegions.slice(0, 5).map((region, index) => ({
+                  rank: index + 1,
                   sentence: region.sentence.substring(0, 100) + (region.sentence.length > 100 ? "..." : ""),
-                  curvature: region.curvature
-                }))
+                  curvature: region.curvature,
+                  complexity: region.curvature > 0.5 ? "high" : region.curvature > 0.2 ? "moderate" : "low"
+                })),
+                interpretation: {
+                  curvature_meaning: "Manifold curvature measures semantic density - higher values indicate more complex, interconnected concepts",
+                  variance_meaning: `Curvature variance of ${complexity.curvatureVariance.toFixed(4)} indicates ${complexity.curvatureVariance > 0.1 ? "highly variable" : "relatively uniform"} semantic complexity across the document`,
+                  application: "High curvature regions may benefit from more detailed analysis or entity resolution"
+                }
               }, null, 2)
             }
           ]
@@ -376,7 +375,33 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 type: "document_stored",
                 document_id,
                 document_length: document.length,
-                message: `Document '${document_id}' stored successfully`
+                cache_size: documentCache.size,
+                message: `Document "${document_id}" stored successfully`
+              }, null, 2)
+            }
+          ]
+        };
+      }
+
+      case "embedding_backend_health": {
+        // Check backend health
+        const health = await embeddingBackend.healthCheck();
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                type: "embedding_backend_health",
+                backend_type: config.embeddingBackend.type,
+                status: health.status,
+                details: health.details,
+                configuration: {
+                  type: config.embeddingBackend.type,
+                  python_service_url: config.embeddingBackend.pythonServiceUrl,
+                  ollama_url: config.embeddingBackend.ollamaUrl,
+                  ollama_model: config.embeddingBackend.ollamaModel
+                }
               }, null, 2)
             }
           ]
@@ -384,15 +409,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       default:
-        throw new Error(`Unknown tool: ${name}`);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ error: `Unknown tool: ${name}` }, null, 2)
+            }
+          ],
+          isError: true
+        };
     }
   } catch (error) {
-    log('error', `Tool execution failed: ${name}`, error);
+    const errorMessage = handleError(error, name);
     return {
       content: [
         {
           type: "text",
-          text: handleError(error, `tool '${name}'`)
+          text: JSON.stringify({ 
+            error: errorMessage,
+            tool: name,
+            embedding_backend: config.embeddingBackend.type
+          }, null, 2)
         }
       ],
       isError: true
@@ -409,13 +446,19 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
       {
         uri: "rse://stored-documents",
         name: "Stored Documents",
-        description: "List of documents stored in the RSE cache",
+        description: "Cache of documents stored for analysis",
         mimeType: "application/json"
       },
       {
         uri: "rse://algorithm-info",
         name: "RSE Algorithm Information",
-        description: "Information about the Resonant Semantic Embedding algorithm",
+        description: "Details about the Resonant Semantic Embedding algorithm",
+        mimeType: "application/json"
+      },
+      {
+        uri: "rse://config",
+        name: "RSE Configuration",
+        description: "Current RSE and embedding backend configuration",
         mimeType: "application/json"
       }
     ]
@@ -429,14 +472,12 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
   const { uri } = request.params;
   
   try {
-    log('info', `Resource requested: ${uri}`);
-
     switch (uri) {
-      case "rse://stored-documents": {
-        const documents = Array.from(documentCache.entries()).map(([id, content]) => ({
+      case "rse://stored-documents":
+        const documents = Array.from(documentCache.entries()).map(([id, doc]) => ({
           id,
-          length: content.length,
-          preview: content.substring(0, 100) + (content.length > 100 ? "..." : "")
+          length: doc.length,
+          preview: doc.substring(0, 100) + (doc.length > 100 ? "..." : "")
         }));
         
         return {
@@ -444,235 +485,138 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
             {
               uri,
               mimeType: "application/json",
-              text: JSON.stringify({
-                type: "stored_documents",
-                count: documents.length,
-                documents
-              }, null, 2)
+              text: JSON.stringify({ documents, total: documentCache.size }, null, 2)
             }
           ]
         };
-      }
-
-      case "rse://algorithm-info": {
+        
+      case "rse://algorithm-info":
         return {
           contents: [
             {
               uri,
               mimeType: "application/json",
               text: JSON.stringify({
-                type: "algorithm_info",
                 name: "Resonant Semantic Embedding (RSE)",
-                description: "Frequency-domain analysis of semantic content with manifold learning",
-                features: {
-                  semantic_fourier_transform: "Converts semantic signals to frequency domain",
-                  resonance_filtering: "Extracts semantically important frequency components",
-                  manifold_learning: "Projects embeddings onto lower-dimensional semantic manifolds",
-                  geodesic_distance: "Computes semantic similarity using manifold geometry",
-                  curvature_analysis: "Measures semantic complexity through manifold curvature"
-                },
+                version: "2.0.0",
+                description: "Frequency-domain semantic analysis using manifold learning and production embeddings",
+                features: [
+                  "Semantic Fourier Transform for frequency decomposition",
+                  "Manifold learning with geodesic distance metrics",
+                  "Curvature-based semantic complexity analysis",
+                  "Real embedding generation via Python service or Ollama"
+                ],
                 parameters: {
-                  threshold: "Resonance threshold for component filtering",
-                  window_size: "Size of sliding window for semantic signal construction",
-                  manifold_dimension: "Intrinsic dimension of learned semantic manifold"
+                  threshold: config.threshold,
+                  window_size: config.windowSize,
+                  manifold_dimension: config.manifoldDimension,
+                  use_manifold_metrics: config.useManifoldMetrics
+                },
+                mathematical_foundations: {
+                  fourier_transform: "Decomposes semantic signals into frequency components",
+                  manifold_learning: "Projects embeddings onto lower-dimensional semantic manifolds",
+                  curvature_analysis: "Measures local semantic complexity via manifold geometry",
+                  geodesic_distance: "Computes similarity using curved manifold paths"
                 }
               }, null, 2)
             }
           ]
         };
-      }
-
+        
+      case "rse://config":
+        return {
+          contents: [
+            {
+              uri,
+              mimeType: "application/json",
+              text: JSON.stringify({
+                embedding_backend: {
+                  type: config.embeddingBackend.type,
+                  python_service_url: config.embeddingBackend.pythonServiceUrl,
+                  python_service_timeout: config.embeddingBackend.pythonServiceTimeout,
+                  ollama_url: config.embeddingBackend.ollamaUrl,
+                  ollama_model: config.embeddingBackend.ollamaModel,
+                  ollama_timeout: config.embeddingBackend.ollamaTimeout
+                },
+                rse_parameters: {
+                  threshold: config.threshold,
+                  window_size: config.windowSize,
+                  manifold_dimension: config.manifoldDimension,
+                  use_manifold_metrics: config.useManifoldMetrics
+                },
+                performance: {
+                  batch_size: config.batchSize,
+                  max_concurrent_requests: config.maxConcurrentRequests
+                },
+                environment_variables: {
+                  EMBEDDING_BACKEND: "python-service or ollama",
+                  PYTHON_SERVICE_URL: "http://127.0.0.1:8001",
+                  OLLAMA_URL: "http://127.0.0.1:11434",
+                  OLLAMA_EMBEDDING_MODEL: "nomic-embed-text or mxbai-embed-large",
+                  RSE_THRESHOLD: "0.1",
+                  RSE_WINDOW_SIZE: "3",
+                  RSE_MANIFOLD_DIM: "3"
+                }
+              }, null, 2)
+            }
+          ]
+        };
+        
       default:
-        throw new Error(`Unknown resource: ${uri}`);
+        return {
+          contents: [
+            {
+              uri,
+              mimeType: "text/plain",
+              text: `Unknown resource: ${uri}`
+            }
+          ]
+        };
     }
   } catch (error) {
-    log('error', `Resource read failed: ${uri}`, error);
-    throw error;
+    const errorMessage = handleError(error, `read resource ${uri}`);
+    return {
+      contents: [
+        {
+          uri,
+          mimeType: "text/plain",
+          text: errorMessage
+        }
+      ]
+    };
   }
 });
-
-/**
- * List available prompts
- */
-server.setRequestHandler(ListPromptsRequestSchema, async () => {
-  return {
-    prompts: [
-      {
-        name: "analyze_semantic_patterns",
-        description: "Analyze semantic patterns in text using RSE",
-        arguments: [
-          {
-            name: "text",
-            description: "Text to analyze for semantic patterns",
-            required: true
-          }
-        ]
-      },
-      {
-        name: "compare_document_similarity",
-        description: "Compare semantic similarity between documents",
-        arguments: [
-          {
-            name: "doc1",
-            description: "First document",
-            required: true
-          },
-          {
-            name: "doc2", 
-            description: "Second document",
-            required: true
-          }
-        ]
-      }
-    ]
-  };
-});
-
-/**
- * Handle prompt requests
- */
-server.setRequestHandler(GetPromptRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
-  
-  switch (name) {
-    case "analyze_semantic_patterns": {
-      const { text } = args || {};
-      return {
-        description: "Analyze semantic patterns using RSE frequency analysis",
-        messages: [
-          {
-            role: "user",
-            content: {
-              type: "text",
-              text: `Please analyze the semantic patterns in this text using Resonant Semantic Embedding (RSE). Focus on:
-
-1. Frequency-domain semantic features
-2. Resonant components that capture key semantic themes
-3. Manifold curvature indicating semantic complexity
-4. Hierarchical organization of semantic content
-
-Text to analyze:
-${text || "[Please provide text to analyze]"}
-
-Use the RSE tools to provide detailed frequency analysis, semantic hierarchy, and complexity metrics.`
-            }
-          }
-        ]
-      };
-    }
-
-    case "compare_document_similarity": {
-      const { doc1, doc2 } = args || {};
-      return {
-        description: "Compare semantic similarity between documents using RSE metrics",
-        messages: [
-          {
-            role: "user",
-            content: {
-              type: "text",
-              text: `Please compare the semantic similarity between these two documents using Resonant Semantic Embedding (RSE). Consider:
-
-1. RSE distance metrics in frequency domain
-2. Geometric similarity using manifold learning
-3. Comparison of semantic hierarchies
-4. Analysis of complexity differences
-
-Document 1:
-${doc1 || "[Please provide first document]"}
-
-Document 2:
-${doc2 || "[Please provide second document]"}
-
-Use the RSE comparison tools to provide quantitative similarity scores and qualitative analysis.`
-            }
-          }
-        ]
-      };
-    }
-
-    default:
-      throw new Error(`Unknown prompt: ${name}`);
-  }
-});
-
-/**
- * Validate embedding service availability
- */
-async function validateEmbeddingService(): Promise<void> {
-  try {
-    log('info', 'Validating embedding service connection...');
-    const response = await fetch('http://127.0.0.1:8001/health', {
-      method: 'GET',
-      headers: { 'Accept': 'application/json' }
-    });
-
-    if (!response.ok) {
-      throw new Error(`Embedding service health check failed: ${response.status} ${response.statusText}`);
-    }
-
-    const health = await response.json();
-    if (!health.model_loaded) {
-      throw new Error('Embedding service model not loaded');
-    }
-
-    log('info', `Embedding service validated successfully`, health);
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    log('error', 'Embedding service validation failed', { error: errorMessage });
-    throw new Error(`RSE Server requires embedding service at http://127.0.0.1:8001. ${errorMessage}`);
-  }
-}
 
 /**
  * Start the server
  */
-async function main(): Promise<void> {
-  const transport = new StdioServerTransport();
+async function main() {
+  log('info', 'Starting Resonant Semantic Embedding MCP Server v2.0.0');
+  log('info', 'Configuration', {
+    embedding_backend: config.embeddingBackend.type,
+    threshold: config.threshold,
+    window_size: config.windowSize,
+    manifold_dimension: config.manifoldDimension
+  });
   
-  // Validate embedding service before starting
-  await validateEmbeddingService();
-  
-  // Setup error handlers
-  process.on('SIGINT', async () => {
-    log('info', 'Received SIGINT, shutting down gracefully');
-    await server.close();
-    process.exit(0);
-  });
-
-  process.on('SIGTERM', async () => {
-    log('info', 'Received SIGTERM, shutting down gracefully');
-    await server.close();
-    process.exit(0);
-  });
-
-  process.on('uncaughtException', (error) => {
-    log('error', 'Uncaught exception', error);
-    process.exit(1);
-  });
-
-  process.on('unhandledRejection', (reason, promise) => {
-    log('error', 'Unhandled rejection', { reason, promise });
-    process.exit(1);
-  });
-
+  // Health check on startup
   try {
-    log('info', 'Starting RSE MCP Server');
-    await server.connect(transport);
-    log('info', 'RSE MCP Server started successfully');
+    const health = await embeddingBackend.healthCheck();
+    log('info', 'Embedding backend health check', { status: health.status, details: health.details });
+    
+    if (health.status !== 'healthy') {
+      log('warn', 'Embedding backend is not healthy - tools may fail until backend is available');
+    }
   } catch (error) {
-    log('error', 'Failed to start server', error);
-    process.exit(1);
+    log('error', 'Failed to perform initial health check', { error: String(error) });
   }
+  
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  log('info', 'RSE MCP Server connected and ready');
 }
 
-// Handle exit cleanup
-process.on('exit', () => {
-  log('info', 'RSE MCP Server shutting down');
+main().catch((error) => {
+  log('error', 'Fatal error in main', { error: String(error) });
+  process.exit(1);
 });
-
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main().catch((error) => {
-    log('error', 'Server startup failed', error);
-    process.exit(1);
-  });
-}

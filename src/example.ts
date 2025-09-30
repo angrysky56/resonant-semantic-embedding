@@ -3,11 +3,13 @@ import { ResonantSemanticEmbedding } from './index.js';
 /**
  * Example usage of enhanced RSE with manifold learning capabilities
  * Demonstrates both classical RSE and manifold-enhanced geometric similarity
+ * 
+ * ASYNC REFACTOR: Updated to match async RSE API
  */
 
 // Mock embedding function for demonstration
 // In practice, you'd use a real embedding model like OpenAI, Sentence-BERT, etc.
-function mockEmbeddingFunction(text: string): Float64Array {
+async function mockEmbeddingFunction(text: string): Promise<Float64Array> {
   // Simple hash-based embedding for demonstration
   const words = text.toLowerCase().split(/\s+/);
   const embedding = new Float64Array(128);
@@ -84,20 +86,20 @@ async function demonstrateRSE() {
   for (const [topic, text] of Object.entries(documents)) {
     console.log(`--- ${topic.toUpperCase()} ---`);
     
-    // Classical RSE analysis
-    const classicalRSE = rse.generateRSE(text);
+    // Classical RSE analysis (ASYNC: now awaits)
+    const classicalRSE = await rse.generateRSE(text);
     console.log(`Resonant components: ${classicalRSE.components.length}`);
     console.log(`Compression ratio: ${(classicalRSE.compressionRatio * 100).toFixed(1)}%`);
     console.log(`Total energy: ${classicalRSE.totalEnergy.toFixed(3)}`);
     
-    // Manifold-enhanced analysis
-    const manifoldRSE = rse.generateManifoldRSE(text);
+    // Manifold-enhanced analysis (ASYNC: now awaits)
+    const manifoldRSE = await rse.generateManifoldRSE(text);
     console.log(`Manifold dimension: ${manifoldRSE.manifoldDimension}`);
     console.log(`Average curvature: ${manifoldRSE.averageCurvature.toFixed(4)}`);
     console.log(`Geodesic components: ${manifoldRSE.geodesicComponents.length}`);
     
-    // Semantic complexity analysis
-    const complexity = rse.analyzeSemanticComplexity(text);
+    // Semantic complexity analysis (ASYNC: now awaits)
+    const complexity = await rse.analyzeSemanticComplexity(text);
     console.log(`Max curvature: ${complexity.maxCurvature.toFixed(4)}`);
     console.log(`Curvature variance: ${complexity.curvatureVariance.toFixed(4)}`);
     
@@ -118,7 +120,8 @@ async function demonstrateRSE() {
   console.log('Classical RSE Similarities:');
   for (let i = 0; i < topics.length; i++) {
     for (let j = i + 1; j < topics.length; j++) {
-      const similarity = rse.similarity(documents[topics[i]], documents[topics[j]]);
+      // ASYNC: now awaits
+      const similarity = await rse.similarity(documents[topics[i]], documents[topics[j]]);
       console.log(`${topics[i]} ↔ ${topics[j]}: ${similarity.toFixed(4)}`);
     }
   }
@@ -126,15 +129,16 @@ async function demonstrateRSE() {
   console.log('\nManifold-Enhanced Geometric Similarities:');
   for (let i = 0; i < topics.length; i++) {
     for (let j = i + 1; j < topics.length; j++) {
-      const similarity = rse.geometricSimilarity(documents[topics[i]], documents[topics[j]]);
+      // ASYNC: now awaits
+      const similarity = await rse.geometricSimilarity(documents[topics[i]], documents[topics[j]]);
       console.log(`${topics[i]} ↔ ${topics[j]}: ${similarity.toFixed(4)}`);
     }
   }
   
   console.log('\n🧠 Semantic Hierarchy Analysis:\n');
   
-  // Analyze semantic hierarchy for one document
-  const physicsHierarchy = rse.analyzeSemanticHierarchy(documents.physics);
+  // Analyze semantic hierarchy for one document (ASYNC: now awaits)
+  const physicsHierarchy = await rse.analyzeSemanticHierarchy(documents.physics);
   console.log('Physics document - Top semantic frequencies:');
   physicsHierarchy.slice(0, 5).forEach((component, index) => {
     console.log(`  ${index + 1}. Freq: ${component.frequency.toFixed(3)}, Amplitude: ${component.amplitude.toFixed(4)}`);
@@ -145,6 +149,8 @@ async function demonstrateRSE() {
   console.log('- Manifold-enhanced similarities capture geometric relationships');
   console.log('- Frequency analysis reveals hierarchical semantic structure');
   console.log('- Geodesic distances provide more nuanced similarity measures');
+  console.log('\n⚠️  Note: This example uses mock embeddings for demonstration.');
+  console.log('    For real analysis, configure an embedding backend (Python service or Ollama)');
 }
 
 // Run the demonstration
