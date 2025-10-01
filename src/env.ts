@@ -4,10 +4,16 @@
  */
 
 import { config as loadEnv } from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
-// Load .env file into process.env
+// Get the directory of this file
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Load .env file from project root (one level up from src/)
 // This must happen before config.ts is loaded
-loadEnv();
+loadEnv({ path: join(__dirname, '..', '.env') });
 
 // Re-export for convenience
 export { loadEnv };

@@ -433,13 +433,12 @@ export class ResonantSemanticEmbedding {
   async generateManifoldRSE(document: string): Promise<ManifoldRSE> {
     const baseRSE = await this.generateRSE(document);
     
-    // Extract embeddings for manifold learning (ASYNC: now awaits)
+    // Extract embeddings for manifold learning (ASYNC: now awaits, PARALLELIZED)
     const sentences = document.split(/[.!?]+/).filter(s => s.trim().length > 0);
-    const embeddings: Float64Array[] = [];
-    for (const sentence of sentences) {
-      const embedding = await this.embeddingFunction(sentence);
-      embeddings.push(embedding);
-    }
+    // Parallel embedding generation to avoid timeout
+    const embeddings: Float64Array[] = await Promise.all(
+      sentences.map(sentence => this.embeddingFunction(sentence))
+    );
     
     // Learn manifold structure (PRESERVED: same algorithm)
     const manifoldData = SemanticFourierTransform.learnManifoldStructure(
